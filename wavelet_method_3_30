@@ -1,0 +1,137 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pywt
+import scipy.signal as ss
+from functions_software import *
+import pandas as pd
+
+plt.close('all')
+plt.clf()
+
+# constants
+Fs = 10  # sampling rate, Hz
+delta_t_single = float(1/Fs)
+bin_size_sec = 5
+bin_size_samples = int(bin_size_sec/delta_t_single)
+peak_count = 3
+peak_count_HR_auto = 15
+
+# end of setup
+###########################################################
+
+# load data from .txt file, time and unwrapped phase
+# seems to work best with 3min_normal data
+time_, phase = txt_file_read('mmwave_test_data_1_29_3min_normal1.txt')
+
+# cut out spike at beginning
+phase = phase[50:]
+time_ = time_[50:]
+print('Total wavelet decomposition time period: %5.2f seconds' % (time_[-1] - time_[0]))
+
+# filter with wavelet
+HR_wavelet_filt_waveform = wavelet_filter(phase, 'HR')
+RR_wavelet_filt_waveform = wavelet_filter(phase, 'RR')
+
+if len(time_) == len(HR_wavelet_filt_waveform):
+    plt.figure(1)
+    plt.subplot(311)
+    plt.plot(time_, HR_wavelet_filt_waveform) 
+    plt.title('HR Waveform Reconstruction') # thresholded above 4th level 
+    plt.xlabel('Time [s]') 
+    plt.ylabel('Amplitude') 
+    plt.subplot(312)
+    plt.plot(time_, RR_wavelet_filt_waveform)
+    plt.title('RR Waveform Reconstruction') # thresholded above 6th level
+    plt.xlabel('Time [s]') 
+    plt.ylabel('Amplitude') 
+    plt.subplot(313)
+    plt.plot(time_[:-1], phase_diff(phase))
+    plt.title('Phase Difference')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Amplitude') 
+else:
+    plt.figure(1)
+    plt.subplot(311)
+    plt.plot(time_[:-1], HR_wavelet_filt_waveform) 
+    plt.title('HR Waveform Reconstruction') # thresholded above 4th level 
+    plt.xlabel('Time [s]') 
+    plt.ylabel('Amplitude') 
+    plt.subplot(312)
+    plt.plot(time_[:-1], RR_wavelet_filt_waveform)
+    plt.title('RR Waveform Reconstruction') # thresholded above 6th level
+    plt.xlabel('Time [s]') 
+    plt.ylabel('Amplitude') 
+    plt.subplot(313)
+    plt.plot(time_[:-1], phase_diff(phase))
+    plt.title('Phase Difference')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Amplitude') 
+    
+#plt.show()
+
+HR_mode = []
+HR_median = []
+HR_ave = []
+RR_mode = []
+RR_median = []
+RR_ave = []
+filter_oder = 4
+
+##########################################################
+# wavelet coefficient fft peaks for rate estimation test #
+##########################################################
+
+# bining then deconstructing 
+time_binned = time_[bin_size_samples-1:]  # this size does not match with the rates size
+RR_wcoeff_peak = []
+RR_wcoeff_peak_2 = []
+RR_wcoeff_peak_3 = []
+for i in range(len(phase) - (bin_size_samples - 1)):
+
+    # bin the phase
+    phase_bin = phase[i:i+bin_size_samples]
+    # wavelet deconstruction
+    coeffs = pywt.wavedec(phase_bin, 'db5', level=7)
+    
+    # HR
+    # fft on wavelet 4th level coefficient
+    Y, frq = perform_fft(coeffs[4], 'HR')
+
+    # find peaks in the fft
+    HR_wf_coeff_peaks,_ = ss.find_peaks(Y)
+    # don't do anything with this because we are focusing on RR first
+
+    # RR
+    # fft on wavelet 6th level coefficient
+    Y, frq = perform_fft(coeffs[2], 'RR')
+
+    # find peaks in the 6th level detail coefficient 
+    RR_wf_coeff_fft_peak_index,_ = ss.find_peaks(Y) # this is almost always an epmty array, and when it isn't the peak index is 1
+    #print(RR_wf_coeff_fft_peak_index)
+    # report highest peak
+    RR_wcoeff_peak.append(60*float(frq[np.where(Y==max(Y))]))   # this variable is mostly 0, but sometimes it spikes to 75
+
+    
+################################################
+# peaks from waveform for rate estimation test #
+################################################
+# working! (if the breathing waveform turns out good)
+RR_rate_wf, time_wf_peak = wf_to_rate(RR_wavelet_filt_waveform)
+
+plt.figure(2)
+# values jump all over the place with large resolution [30, 15, 10, 12 or 0]
+plt.plot(time_binned, RR_wcoeff_peak, '-r',label='Wavelet coefficient method peak')
+plt.plot(time_wf_peak, RR_rate_wf, '-b', label='RR Waveform method estimate')
+
+HR_rate_wf, time_wf_peak = wf_to_rate(HR_wavelet_filt_waveform)
+
+#plt.plot(time_wf_peak, HR_rate_wf, '-k', label='HR Waveform method estimate')
+plt.xlabel('Time [s]')
+plt.ylabel('Rate [bpm]')
+plt.legend(bbox_to_anchor=(0, 1.02, 1, 0.2), loc="lower left", mode="expand", borderaxespad=0, ncol=2)
+plt.show()
+
+
+df1 = pd.DataFrame({'time': time_wf_peak, 'RR from waveform': HR_rate_wf})
+with pd.ExcelWriter('C:\\Users\\zkaya\\OneDrive - The Ohio State University\\Python3\\processed exports\\wavelet and bandpass\\1_29_3min_normal1_waveform_method.xlsx') as writer:  
+    df1.to_excel(writer, sheet_name='HR bandpass')
