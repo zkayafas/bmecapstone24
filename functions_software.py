@@ -253,7 +253,7 @@ def thresh(coeffs, desired_waveform):
             risk = (n - (2 * np.arange(n)) + s)/n
             ibest = np.argmin(risk)
             thresh.append(np.sqrt(a[ibest]))
-        else:   # else, set a threshold of zero so levels are not filtered
+        else:   # else, set a threshold of 20 so levels are not filtered
             thresh.append(20)    # with soft thresholding, coefficients less than the threshold are chosen, others are set to zero
         i = i+1
 
