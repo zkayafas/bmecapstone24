@@ -6,7 +6,7 @@ import pywt
 import matplotlib.pyplot as plt
 
 # bandpass filtering
-def bandpass(phase_diff, waveform_output, filter_order = 7):
+def bandpass(phase_diff, waveform_output, filter_order = 7, Fs = 10):
     # funtion takes the phase difference and desired filtered waveform, returns filtered phase with bandpass method
     # default filter order of 7
     bpf = [0.1, 0.6, 0.6, 4]  # Bandpass filter cutoff frequencies -> [RR_low, RR_high, HR_low, HR_high]
@@ -22,7 +22,7 @@ def bandpass(phase_diff, waveform_output, filter_order = 7):
         return wf_filt
     # heartbeat waveform 
     elif waveform_output == 'HR':
-        b, a = ss.butter(filter_order, [bpf[0], bpf[1]], btype='bandpass', fs = Fs)
+        b, a = ss.butter(filter_order, [bpf[2], bpf[3]], btype='bandpass', fs = Fs)
         wf_filt = ss.lfilter(b, a, phase_diff)
 
         return wf_filt
@@ -72,7 +72,7 @@ def perform_fft(phase_unwrap):
     Y = 2.0/bin_size_samples*np.abs(hann_window)    # y data
 
     # find area under curve using cumulative integration using trapezoil rule 
-    area = cumtrapz(Y, frq)
+    area = cumulative_trapezoid(Y, frq)
     area = area / area[-1]
     idx = np.argwhere(area >= .5)[0,0]  # return the index where the area is at least 50%
 
@@ -92,7 +92,7 @@ def perform_fft(phase_unwrap):
     Y = 2.0/bin_size_samples*np.abs(hann_window)    # y data
 
     # find area under curve using cumulative integration using trapezoil rule 
-    area = cumtrapz(Y, frq)
+    area = cumulative_trapezoid(Y, frq)
     area = area / area[-1]
     idx = np.argwhere(area >= .5)[0,0]  # return the index where the area is at least 50%
 
@@ -132,7 +132,9 @@ def phase_diff(phase_unwrap):
 
     return phase_diff_val
 
-# Function to plot the detail coefficient stuff from https://notebook.community/CSchoel/learn-wavelets/wavelet-denoising
+
+# not needed for data prcoessing, it was created to help visualize data
+'''# Function to plot the detail coefficient stuff from https://notebook.community/CSchoel/learn-wavelets/wavelet-denoising
 def plot_dwt(details, approx, xlim=(-300,300), **line_kwargs):
     for i in range(len(details)):
         plt.subplot(len(details)+1,1,i+1)
@@ -150,7 +152,7 @@ def plot_dwt(details, approx, xlim=(-300,300), **line_kwargs):
     plt.subplot(len(details)+1,1,len(details)+1)
     plt.title("approx")
     plt.plot(xvals, approx, **line_kwargs)
-    plt.xlim(xlim)
+    plt.xlim(xlim)'''
  
 # function that performs autocorrelation and raturns RR, HR from 30 seconds of data
 def process_auto(phase_unwrap):
@@ -222,7 +224,7 @@ def process_auto(phase_unwrap):
     return mean_RR_auto, mean_HR_auto
 
 # wavelet coefficient thresholding from https://notebook.community/CSchoel/learn-wavelets/wavelet-denoising
-def thresh(coeffs, waveform_output):
+def thresh(coeffs, desired_waveform):
     # funtion takes wavelet coefficients from deconstruction and calculates thresholding values
     # from research, we know to do this at and above the level of 4 for HR and 6 for RR
     
@@ -231,9 +233,9 @@ def thresh(coeffs, waveform_output):
     i=0
 
     # set level
-    if waveform_output == 'HR':
+    if desired_waveform == 'HR':
         level = 4
-    elif waveform_output == 'RR':
+    elif desired_waveform == 'RR':
         level = 6
     else:
         print('Unrecognized desired waveform! Passing options are "HR" and "RR"')
@@ -289,7 +291,7 @@ def txt_file_read(file_name, sensor_vals=False):
         return time, phase_unwrap
     
 # wavelet filtering output thresholded coeffs
-def wavelet_filter(phase_unwrap, waveform_output, wavelet_deconstruct_level=7):
+def wavelet_filter(phase_unwrap, desired_waveform, wavelet_deconstruct_level=7):
     # funtion takes the unwrapped phase measurement from the sensor and desired waveform and filters it with wavelet method
     # default wavelet deconstruction is at level 7, per research papers
     # deconstruction is also done with Debauchies 5 
@@ -299,7 +301,7 @@ def wavelet_filter(phase_unwrap, waveform_output, wavelet_deconstruct_level=7):
     # deconstruction with wavelet
     coeffs = pywt.wavedec(phase_diff_val, 'db5', level=wavelet_deconstruct_level)
     # coefficient thresholding
-    thresholded_coeffs = [pywt.threshold(c, t, 'soft') for c, t in zip(coeffs, thresh(coeffs, waveform_output))]
+    thresholded_coeffs = [pywt.threshold(c, t, 'soft') for c, t in zip(coeffs, thresh(coeffs, desired_waveform))]
     # wavelet reconstruction
     waveform = pywt.waverec(thresholded_coeffs, 'db5')
 
